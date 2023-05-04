@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
+import internal.org.springframework.content.rest.controllers.resolvers.EntityResolution;
+import internal.org.springframework.content.rest.controllers.resolvers.EntityResolver;
 import jakarta.servlet.*;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,6 +25,7 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.HttpUpgradeHandler;
 import jakarta.servlet.http.Part;
 
+import org.slf4j.Logger;
 import org.springframework.content.commons.mappingcontext.ContentProperty;
 import org.springframework.content.commons.mappingcontext.MappingContext;
 import org.springframework.content.commons.property.PropertyPath;
@@ -39,6 +42,7 @@ import org.springframework.data.repository.support.Repositories;
 import org.springframework.data.repository.support.RepositoryInvoker;
 import org.springframework.hateoas.EntityModel;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.util.ReflectionUtils;
 import org.springframework.util.StringUtils;
@@ -55,12 +59,13 @@ import internal.org.springframework.content.rest.utils.RepositoryUtils;
 import internal.org.springframework.content.rest.utils.StoreUtils;
 
 public class DefaultEntityResolver implements EntityResolver {
+    private static final  Logger logger = org.slf4j.LoggerFactory.getLogger(DefaultEntityResolver.class);
 
     private static boolean ROOT_RESOURCE_INFORMATION_CLASS_PRESENT = false;
 
     static {
         try {
-            ROOT_RESOURCE_INFORMATION_CLASS_PRESENT = DefaultEntityResolver.class.getClassLoader().loadClass("org.springframework.data.rest.webmvc.config.RootResourceInformationHandlerMethodArgumentResolver") != null;
+            ROOT_RESOURCE_INFORMATION_CLASS_PRESENT = internal.org.springframework.content.rest.controllers.resolvers.DefaultEntityResolver.class.getClassLoader().loadClass("org.springframework.data.rest.webmvc.config.RootResourceInformationHandlerMethodArgumentResolver") != null;
         } catch (ClassNotFoundException e) {}
     }
 
@@ -163,22 +168,24 @@ public class DefaultEntityResolver implements EntityResolver {
     public Object findOne(Repositories repositories, StoreInfo info, Class<?> domainObjClass, String repository, Serializable id)
             throws HttpRequestMethodNotSupportedException {
 
-        Optional<Object> domainObj = null;
+        Optional<Object> domainObj = Optional.empty();
 
         if (ROOT_RESOURCE_INFORMATION_CLASS_PRESENT) {
 
             RepositoryInvoker invoker;
             try {
-                invoker = resolveRootResourceInformation(info, repository, id, new ModelAndViewContainer(), new FakeWebBinderFactory());
+                invoker = resolveRootResourceInformation(info, repository, id, new ModelAndViewContainer(), new internal.org.springframework.content.rest.controllers.resolvers.DefaultEntityResolver.FakeWebBinderFactory());
                 if (invoker != null) {
                     domainObj = invoker.invokeFindById(id);
                 }
             } catch (ConverterNotFoundException e) {
-
+                logger.debug("resolveRootResourceInformation failed with root resource information class present");
                 domainObj = findOneByReflection(repositories, domainObjClass, id);
+            } catch (AccessDeniedException ace) {
+                logger.debug("invoking Repository findById(id) method threw AccessDeniedException with root resource information class present");
+                throw ace;
             } catch (Exception e) {
-
-                e.printStackTrace();
+                logger.error("invoking findById(id)failed  with root resource information class present", e.getCause());
             }
         } else {
 
@@ -218,7 +225,7 @@ public class DefaultEntityResolver implements EntityResolver {
     private RepositoryInvoker resolveRootResourceInformation(StoreInfo info, String repository, Serializable id, ModelAndViewContainer mavContainer, WebDataBinderFactory binderFactory)
             throws Exception {
 
-        Method m = ReflectionUtils.findMethod(RepositoryEntityControllerFacade.class, "getItemResource", org.springframework.data.rest.webmvc.RootResourceInformation.class);
+        Method m = ReflectionUtils.findMethod(internal.org.springframework.content.rest.controllers.resolvers.DefaultEntityResolver.RepositoryEntityControllerFacade.class, "getItemResource", org.springframework.data.rest.webmvc.RootResourceInformation.class);
         MethodParameter repoRequestMethodParameter = new MethodParameter(m, 0);
 
         RepositoryInformation ri = RepositoryUtils.findRepositoryInformation(repositories, info.getDomainObjectClass());
@@ -267,7 +274,7 @@ public class DefaultEntityResolver implements EntityResolver {
     }
 
     public static NativeWebRequest nativeWebRequestForGetItemResource(String pathInfo) {
-        return new GetItemResourceNativeWebRequest(pathInfo);
+        return new internal.org.springframework.content.rest.controllers.resolvers.DefaultEntityResolver.GetItemResourceNativeWebRequest(pathInfo);
     }
 
     public static class GetItemResourceNativeWebRequest implements NativeWebRequest {
@@ -412,7 +419,7 @@ public class DefaultEntityResolver implements EntityResolver {
 
         @Override
         public <T> T getNativeRequest(Class<T> requiredType) {
-            return (T) new GetItemResourceHttpServletRequest(pathInfo);
+            return (T) new internal.org.springframework.content.rest.controllers.resolvers.DefaultEntityResolver.GetItemResourceHttpServletRequest(pathInfo);
         }
 
         @Override
